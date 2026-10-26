@@ -75,3 +75,48 @@ def test_started_leave_cannot_use_pre_start_cancellation(monkeypatch):
             employee_id=1001,
             request_id=leave_request.id,
         )
+def test_half_day_leave_must_be_one_day():
+    with pytest.raises(BadRequestError):
+        calculate_leave_days(
+            date(2026, 10, 26),
+            date(2026, 10, 27),
+            is_half_day=True,
+        )
+
+
+def test_multi_day_leave_counts_inclusive_calendar_days():
+    assert calculate_leave_days(
+        date(2026, 10, 26),
+        date(2026, 11, 1),
+    ) == Decimal("7")
+def test_pending_requests_cannot_exceed_available_balance():
+    from modules.elm.models import LeaveBalance, LeaveType
+    from modules.elm.services.leave_service import submit_leave_request
+    from core.api.exceptions import ConflictError
+    leave_type = LeaveType.objects.create(
+        code="CL", name="Casual Leave", annual_quota=Decimal("2")
+    )
+    LeaveBalance.objects.create(
+        employee_id=2001,
+        leave_type=leave_type,
+        year=2026,
+        total_allocated=Decimal("2"),
+        used_days=Decimal("0"),
+    )
+
+    submit_leave_request(
+        employee_id=2001,
+        leave_type_id=leave_type.id,
+        start_date=date(2026, 11, 2),
+        end_date=date(2026, 11, 3),
+        reason="First request",
+    )
+
+    with pytest.raises(ConflictError):
+        submit_leave_request(
+            employee_id=2001,
+            leave_type_id=leave_type.id,
+            start_date=date(2026, 11, 5),
+            end_date=date(2026, 11, 6),
+            reason="Second request",
+        )

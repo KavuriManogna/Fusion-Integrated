@@ -1,5 +1,5 @@
 from decimal import Decimal
-
+from django.db.models import Sum
 from django.db import transaction
 from django.utils import timezone
 
@@ -63,9 +63,19 @@ def submit_leave_request(
         year=start_date.year,
         defaults={"total_allocated": leave_type.annual_quota, "used_days": Decimal("0.0")},
     )
-    if balance.remaining_days < total_days:
+    pending_days = LeaveRequest.objects.filter(
+        employee_id=employee_id,
+        leave_type=leave_type,
+        start_date__year=start_date.year,
+        status="PENDING",
+    ).aggregate(total=Sum("total_days"))["total"] or Decimal("0.0")
+
+    available_days = balance.remaining_days - pending_days
+
+    if available_days < total_days:
         raise ConflictError(
-            "Insufficient leave balance for this request.", code="insufficient_balance"
+            "Insufficient leave balance after accounting for pending requests.",
+            code="insufficient_balance",
         )
 
     return LeaveRequest.objects.create(

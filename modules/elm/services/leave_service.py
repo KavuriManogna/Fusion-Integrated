@@ -175,6 +175,12 @@ def cancel_approved_leave(*, employee_id: int, request_id: int) -> LeaveRequest:
     if leave_req.status != "APPROVED":
         raise ConflictError("Only approved requests can be cancelled.", code="invalid_status")
 
+    if leave_req.start_date <= timezone.localdate():
+        raise ConflictError(
+            "Approved leave can only be cancelled before its start date.",
+            code="cancellation_after_start",
+        )
+
     balance = LeaveBalance.objects.select_for_update().get(
         employee_id=leave_req.employee_id,
         leave_type=leave_req.leave_type,
